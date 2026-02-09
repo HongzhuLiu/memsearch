@@ -23,37 +23,13 @@
         ]
       }
     ],
-    "PostToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/post-tool-use.sh",
-            "timeout": 30,
-            "async": true
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "hooks": [
           {
             "type": "agent",
-            "prompt": "You are a session memory writer for a coding project.\n\nThe hook input JSON is provided below as $ARGUMENTS. Extract the `transcript_path` field from it.\n\nYour task:\n1. If `stop_hook_active` is true in the input JSON, do nothing (prevents infinite loops).\n2. Run the transcript parser script to get a concise, pre-truncated summary of the conversation:\n   bash ${CLAUDE_PLUGIN_ROOT}/hooks/parse-transcript.sh <transcript_path>\n   This script handles long transcripts automatically — it truncates long messages to the last 500 chars, reduces tool calls to one-line summaries, and only processes the last 200 lines.\n3. Read the script output. If it says \"(empty transcript)\" or errors, do nothing.\n4. Analyze the parsed output: identify what was discussed, what decisions were made, what code was written or modified, and any important outcomes.\n5. Write a concise summary (3-8 bullet points) of the session.\n6. Determine today's date and current time. Create the directory `.memsearch/memory/` if it doesn't exist.\n7. Append the summary to `.memsearch/memory/YYYY-MM-DD.md` (using today's date) formatted as:\n   ## Session HH:MM\n   - bullet point 1\n   - bullet point 2\n   ...\n8. After writing, run: memsearch index .memsearch/memory/\n   If memsearch is not found, try: uv run memsearch index .memsearch/memory/\n   If that also fails, skip indexing (the summary file is still saved).\n\nIMPORTANT: Keep your work fast — you have a 60-second timeout.\n\n$ARGUMENTS",
+            "prompt": "You are a session memory writer for a coding project.\n\nThe hook input JSON is provided below as $ARGUMENTS. Extract the `transcript_path` field from it.\n\nYour task:\n1. If `stop_hook_active` is true in the input JSON, do nothing (prevents infinite loops).\n2. Run the transcript parser script to get a concise, pre-truncated summary of the conversation:\n   bash ${CLAUDE_PLUGIN_ROOT}/hooks/parse-transcript.sh <transcript_path>\n   This script handles long transcripts automatically — it truncates long messages to the last 500 chars, reduces tool calls to one-line summaries, and only processes the last 200 lines.\n3. Read the script output. If it says \"(empty transcript)\" or errors, do nothing.\n4. Analyze the parsed output: identify what was discussed, what decisions were made, what code was written or modified, and any important outcomes.\n5. Write a concise summary (3-8 bullet points) of the session.\n6. Determine today's date and current time. Create the directory `.memsearch/memory/` if it doesn't exist.\n7. Append the summary to `.memsearch/memory/YYYY-MM-DD.md` (using today's date) formatted as:\n   ## Session HH:MM\n   - bullet point 1\n   - bullet point 2\n   ...\n\nDo NOT run memsearch index — a background watch process handles indexing automatically.\n\nIMPORTANT: Keep your work fast — you have a 60-second timeout.\n\n$ARGUMENTS",
             "timeout": 60
-          }
-        ]
-      }
-    ],
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/pre-compact.sh",
-            "timeout": 15
           }
         ]
       }
@@ -64,7 +40,7 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/session-end.sh",
-            "timeout": 30
+            "timeout": 10
           }
         ]
       }

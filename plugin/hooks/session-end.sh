@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# SessionEnd hook: final memsearch index sync.
+# SessionEnd hook: stop the memsearch watch singleton.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
-if [ -d "$MEMORY_DIR" ]; then
-  run_memsearch index "$MEMORY_DIR"
-fi
+stop_watch
 
 exit 0

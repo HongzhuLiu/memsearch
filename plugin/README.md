@@ -8,7 +8,7 @@ claude --plugin-dir /path/to/memsearch/plugin
 
 ## How It Works
 
-The plugin hooks into 6 Claude Code lifecycle events. Every user prompt triggers a semantic search; every session end writes an AI-generated summary. Memory files are transparent markdown you can read, edit, and version-control.
+The plugin hooks into 4 Claude Code lifecycle events. A singleton `memsearch watch` process handles all indexing; hooks only read or write markdown files.
 
 ```
   ┌─────────────────────────────────────────────────────────────────────────┐
@@ -18,10 +18,16 @@ The plugin hooks into 6 Claude Code lifecycle events. Every user prompt triggers
   SESSION START
   ─────────────
   ┌──────────────┐     ┌─────────────────┐     ┌──────────────────────────┐
-  │ SessionStart │────▶│ Read recent     │────▶│ Inject into context      │
-  │   hook       │     │ daily .md logs  │     │ { "additionalContext" }  │
-  └──────────────┘     │ + memsearch     │     └──────────────────────────┘
-                       │   search        │
+  │ SessionStart │────▶│ Start singleton │────▶│ Inject recent memories   │
+  │   hook       │     │ memsearch watch │     │ into context             │
+  └──────────────┘     │ (PID file lock) │     │ { "additionalContext" }  │
+                       └─────────────────┘     └──────────────────────────┘
+                              │
+                              ▼
+                       ┌─────────────────┐
+                       │ watch monitors  │ (background, 1500ms debounce)
+                       │ .memsearch/     │
+                       │   memory/*.md   │──── auto-index on any change
                        └─────────────────┘
 
   EVERY USER PROMPT
@@ -33,52 +39,52 @@ The plugin hooks into 6 Claude Code lifecycle events. Every user prompt triggers
                            └─────────────────┘
                            (skip if < 10 chars)
 
-  DURING CONVERSATION
-  ────────────────────
-  ┌──────────────┐     ┌──────────────────┐     ┌──────────────────────┐
-  │ PostToolUse  │────▶│ Is .md file in   │─Y──▶│ memsearch index      │
-  │ (Write|Edit) │     │ .memsearch/mem/? │     │ .memsearch/memory/   │
-  │  async       │     └──────────────────┘     └──────────────────────┘
-  └──────────────┘              │N
-                                └──▶ skip (no-op)
-
-  SESSION END
-  ───────────
+  WHEN CLAUDE FINISHES RESPONDING
+  ────────────────────────────────
   ┌──────────┐     ┌──────────────────────┐     ┌──────────────────────┐
   │  Stop    │────▶│ Agent subagent runs  │────▶│ Write AI summary to  │
   │ (agent   │     │ parse-transcript.sh  │     │ .memsearch/memory/   │
   │  hook)   │     │ (truncate + format)  │     │ YYYY-MM-DD.md        │
-  └──────────┘     └──────────────────────┘     └──────────┬───────────┘
-                                                           │
-  ┌──────────────┐                                         │
-  │ PreCompact   │──── memsearch index ◀───────────────────┘
-  └──────────────┘     (ensure fresh before compaction)
+  └──────────┘     └──────────────────────┘     └──────────────────────┘
+                                                  │
+                                                  └──▶ watch detects change
+                                                       → auto-indexes
 
+  SESSION END
+  ───────────
   ┌──────────────┐
-  │ SessionEnd   │──── memsearch index (final sync)
+  │ SessionEnd   │──── stop watch process (cleanup)
   └──────────────┘
 ```
 
 ### Hook Summary
 
-| Hook | Type | Async | Timeout | What it does |
-|------|------|-------|---------|-------------|
-| **SessionStart** | command | no | 10s | Read recent daily logs + semantic search → inject context |
-| **UserPromptSubmit** | command | no | 15s | Semantic search on user prompt → inject relevant memories |
-| **PostToolUse** | command | yes | 30s | Index `.md` edits inside `.memsearch/memory/` |
-| **Stop** | agent | no | 60s | Read transcript → AI summary → write daily log → index |
-| **PreCompact** | command | no | 15s | `memsearch index` before context compaction |
-| **SessionEnd** | command | no | 30s | Final `memsearch index` sync |
+| Hook | Type | Timeout | What it does |
+|------|------|---------|-------------|
+| **SessionStart** | command | 10s | Start `memsearch watch` singleton + inject recent memories |
+| **UserPromptSubmit** | command | 15s | Semantic search on user prompt → inject relevant memories |
+| **Stop** | agent | 60s | Parse transcript → AI summary → write to daily `.md` log |
+| **SessionEnd** | command | 10s | Stop the `memsearch watch` process |
+
+### Design: watch as single source of indexing
+
+The key architectural decision: **indexing is managed in exactly one place** — the `memsearch watch` background process started at SessionStart.
+
+Previous designs had `memsearch index` scattered across PostToolUse, PreCompact, SessionEnd, and Stop hooks. This was redundant and could cause race conditions. Now:
+
+- **Hooks only write `.md` files** — they never call `memsearch index`
+- **Watch detects changes and indexes** — with 1500ms debounce, dedup built in
+- **Singleton via PID file** — `.memsearch/.watch.pid` ensures one watcher per project, even across multiple concurrent Claude sessions
 
 ### Why Stop uses an agent hook
 
 The **Stop** hook is the only one that uses an agent hook (subagent with AI capabilities). All other hooks are simple command (bash) hooks. Here's why:
 
-- **PostToolUse** fires on every Write/Edit — spawning a subagent each time would be too expensive
-- **PreCompact / SessionEnd** only need `memsearch index`, no AI reasoning required
-- **Stop** fires once per session and needs AI to read the full transcript and generate a meaningful summary — a bash script can't do that
+- **UserPromptSubmit** only needs `memsearch search` — no AI reasoning
+- **SessionStart / SessionEnd** only need to start/stop watch + read files — no AI reasoning
+- **Stop** needs AI to read a conversation transcript and generate a meaningful summary — a bash script can't do that
 
-The agent hook subagent receives the transcript path via `$ARGUMENTS`, then calls `parse-transcript.sh` to get a pre-processed text version. The subagent only needs to read the clean output and write a summary. Zero extra LLM API calls — it uses Claude's built-in subagent capability.
+The agent hook subagent calls `parse-transcript.sh` to get pre-processed text, then writes a summary. Zero extra LLM API calls — it uses Claude's built-in subagent capability.
 
 ### Long session protection
 
@@ -94,8 +100,6 @@ The script applies these rules:
 
 Limits are configurable via environment variables: `MEMSEARCH_MAX_LINES` (default 200), `MEMSEARCH_MAX_CHARS` (default 500).
 
-This ensures the 60-second timeout is sufficient even for multi-hour sessions.
-
 ## Memory Storage
 
 All memories live in **`.memsearch/memory/`** inside your project directory:
@@ -103,6 +107,7 @@ All memories live in **`.memsearch/memory/`** inside your project directory:
 ```
 your-project/
 └── .memsearch/
+    ├── .watch.pid        ← singleton watcher PID
     └── memory/
         ├── 2026-02-07.md
         ├── 2026-02-08.md
@@ -129,22 +134,36 @@ Each file contains session summaries in plain markdown:
 | | memsearch plugin | claude-mem |
 |---|---|---|
 | **Prompt-level recall** | Semantic search on **every prompt** | Only at SessionStart |
-| **Pre-compaction safety** | **PreCompact hook** ensures fresh index | No PreCompact hook |
 | **Session summary** | **Agent hook subagent** — zero extra API calls, no background service | Separate Worker service (port 37777) + Anthropic Agent SDK API calls |
+| **Index maintenance** | **`memsearch watch` singleton** — one process, auto-debounced | Manual index calls scattered across hooks |
 | **Storage format** | **Transparent `.md` files** — human-readable, git-friendly | Opaque SQLite + Chroma binary |
-| **Architecture** | 6 bash scripts + 1 agent prompt, ~200 lines total | Node.js/Bun Worker service + Express server + React UI |
+| **Architecture** | 4 hooks + 1 watch process, ~300 lines total | Node.js/Bun Worker service + Express server + React UI |
 | **Runtime dependency** | Python (`memsearch` CLI) | Node.js + Bun runtime |
 | **Vector backend** | **Milvus** (Lite → Server → Zilliz Cloud) | Chroma (local only) |
-| **Background processes** | **None** — all hooks are stateless | Worker service must be running |
+| **Background processes** | **1 watch** (lightweight file watcher) | Worker service (Express + Agent SDK) |
 | **Temp files** | **None** — reads transcript via `$ARGUMENTS` | `session.log` intermediate state |
 | **Data portability** | Copy `.memsearch/memory/*.md` — that's it | Export from SQLite + Chroma |
 | **Cost** | **Zero** extra LLM calls (agent hook is free) | Claude API calls for observation compression |
 
 ### Key design differences
 
-**memsearch** takes a **minimalist, Unix-philosophy approach**: each hook is a small, stateless bash script. No background services, no temp files, no opaque databases. The only "smart" part is the Stop agent hook, which leverages Claude's built-in subagent to generate session summaries at zero cost.
+**memsearch** takes a **minimalist, Unix-philosophy approach**: a singleton file watcher handles indexing, hooks are small stateless scripts that read or write markdown. The only "smart" part is the Stop agent hook, which leverages Claude's built-in subagent to generate session summaries at zero cost.
 
 **claude-mem** takes a **full-stack approach**: a Worker service compresses every tool observation into structured data via Claude API calls, stores them in SQLite + Chroma with FTS5 full-text indexes, and provides a React web UI for browsing memories. More powerful for heavy use, but significantly more complex.
+
+## Plugin Files
+
+```
+plugin/
+├── plugin.json               # Plugin manifest
+└── hooks/
+    ├── hooks.json             # Hook definitions (4 hooks)
+    ├── common.sh              # Shared setup: env, memsearch detection, watch management
+    ├── session-start.sh       # Start watch singleton + inject recent memories
+    ├── user-prompt-submit.sh  # Semantic search on prompt → inject relevant memories
+    ├── parse-transcript.sh    # Deterministic JSONL→text parser with truncation
+    └── session-end.sh         # Stop watch process
+```
 
 ## Prerequisites
 
@@ -183,10 +202,10 @@ claude --plugin-dir /path/to/memsearch/plugin
 - Verify `memsearch search "test query"` works from the command line
 - Ensure `jq` is installed: `jq --version`
 
-**Stop hook not writing summaries?**
-- The agent hook subagent needs Read/Write tool access — this is a Claude Code limitation for agent hooks
-- If it doesn't work, session summaries won't be auto-generated, but all other hooks (search, index) still function
+**Watch not running?**
+- Check: `cat .memsearch/.watch.pid && ps -p $(cat .memsearch/.watch.pid)`
+- Start manually: `memsearch watch .memsearch/memory/`
 
-**Indexing not working?**
-- Run `memsearch index .memsearch/memory/` manually to check for errors
-- Check your memsearch config: `memsearch config list --resolved`
+**Stop hook not writing summaries?**
+- The agent hook subagent needs Read/Write/Bash tool access
+- If it doesn't work, session summaries won't be auto-generated, but search still functions

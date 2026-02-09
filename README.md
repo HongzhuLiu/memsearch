@@ -64,11 +64,13 @@ claude --plugin-dir ./plugin
 ```
 
 ```
-  User prompt ──▶ UserPromptSubmit ──▶ memsearch search ──▶ inject memories
-                                                                  │
-  Claude responds ──▶ PostToolUse (async) ──▶ index .md edits     │
-                                                                  │
-  Session ends ──▶ Stop (agent hook) ──▶ AI summary ──▶ write .memsearch/memory/YYYY-MM-DD.md
+  Session start ──▶ start memsearch watch (singleton) ──▶ inject recent memories
+                           │
+  User prompt ──▶ memsearch search ──▶ inject relevant memories
+                           │
+  Claude stops ──▶ agent hook ──▶ AI summary ──▶ write .memsearch/memory/YYYY-MM-DD.md
+                           │                              │
+  Session end ──▶ stop watch            watch auto-indexes ◀┘
 ```
 
 Memories are transparent markdown files — human-readable, git-friendly, rebuildable. See **[plugin/README.md](plugin/README.md)** for the full architecture diagram, hook details, and comparison with claude-mem.

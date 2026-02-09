@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# SessionStart hook: inject recent memory context when session starts.
+# SessionStart hook: start watch singleton + inject recent memory context.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
+
+# Start memsearch watch as a singleton background process.
+# This is the ONLY place indexing is managed — all other hooks just write .md files.
+start_watch
 
 # If memory dir doesn't exist or has no .md files, nothing to inject
 if [ ! -d "$MEMORY_DIR" ] || ! ls "$MEMORY_DIR"/*.md &>/dev/null; then
@@ -42,7 +46,6 @@ if [ -n "$MEMSEARCH_CMD" ]; then
 fi
 
 if [ -n "$context" ]; then
-  # Escape for JSON output
   json_context=$(printf '%s' "$context" | jq -Rs .)
   echo "{\"additionalContext\": $json_context}"
 else
