@@ -28,7 +28,7 @@ _PROVIDERS: dict[str, tuple[str, str]] = {
 }
 
 _INSTALL_HINTS: dict[str, str] = {
-    "openai": 'pip install "memsearch[openai]"',
+    "openai": 'pip install memsearch  # openai is included by default',
     "google": 'pip install "memsearch[google]"',
     "voyage": 'pip install "memsearch[voyage]"',
     "ollama": 'pip install "memsearch[ollama]"',

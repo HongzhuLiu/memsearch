@@ -2,9 +2,9 @@
 
 **Give your AI agents persistent memory.** Semantic memory search for markdown knowledge bases — index your markdown files, then search them using natural language.
 
-🐾 Inspired by **[OpenClaw](https://github.com/openclaw/openclaw)** — the open-source Claude Code memory system that gives Claude long-term recall across sessions. memsearch extracts and packages OpenClaw's battle-tested memory layer into a **standalone, reusable library** so *any* AI agent can have the same 24/7 context retention: remembering conversations, building upon previous interactions, and recalling knowledge indefinitely.
+🐾 Inspired by **[OpenClaw](https://github.com/openclaw/openclaw)** — the open-source personal AI assistant platform created by Peter Steinberger. OpenClaw connects WhatsApp, Telegram, Slack, and 10+ messaging platforms into a unified AI assistant that runs locally on your machine, with a powerful markdown-based memory system that gives it persistent recall across sessions. memsearch extracts and packages OpenClaw's battle-tested memory layer into a **standalone, reusable library** so *any* AI agent can have the same long-term context retention.
 
-> 💡 **Think of it as "OpenClaw's memory, but for everyone."** If you've seen how OpenClaw lets Claude remember everything across sessions, memsearch gives you that same superpower — as a pip-installable package, compatible with any agent framework, and backed by [Milvus](https://milvus.io/) vector database (from local Milvus Lite to fully managed Zilliz Cloud).
+> 💡 **Think of it as "OpenClaw's memory, but for everyone."** OpenClaw's memory system — markdown files as source of truth, vector-indexed semantic search, automatic flush consolidation — is one of the best designs for agent memory out there. memsearch makes it available as a pip-installable package, compatible with any agent framework, and backed by [Milvus](https://milvus.io/) vector database (from local Milvus Lite to fully managed Zilliz Cloud).
 
 ### ✨ Why memsearch?
 
@@ -125,6 +125,114 @@ async def main():
 
 asyncio.run(main())
 ```
+
+<details>
+<summary>💜 <b>Anthropic Claude example</b> — click to expand</summary>
+
+```bash
+pip install memsearch anthropic
+```
+
+```python
+import asyncio
+from datetime import date
+from pathlib import Path
+from anthropic import Anthropic
+from memsearch import MemSearch
+
+MEMORY_DIR = "./memory"
+llm = Anthropic()
+ms = MemSearch(paths=[MEMORY_DIR])
+
+def save_memory(content: str):
+    p = Path(MEMORY_DIR) / f"{date.today()}.md"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "a") as f:
+        f.write(f"\n{content}\n")
+
+async def agent_chat(user_input: str) -> str:
+    # 1. Recall
+    memories = await ms.search(user_input, top_k=3)
+    context = "\n".join(f"- {m['content'][:200]}" for m in memories)
+
+    # 2. Think — call Claude with memory context
+    resp = llm.messages.create(
+        model="claude-sonnet-4-5-20250929",
+        max_tokens=1024,
+        system=f"You have these memories:\n{context}",
+        messages=[{"role": "user", "content": user_input}],
+    )
+    answer = resp.content[0].text
+
+    # 3. Remember
+    save_memory(f"## {user_input}\n{answer}")
+    await ms.index()
+    return answer
+
+async def main():
+    save_memory("## Team\n- Alice: frontend lead\n- Bob: backend lead")
+    await ms.index()
+    print(await agent_chat("Who is our frontend lead?"))
+
+asyncio.run(main())
+```
+
+</details>
+
+<details>
+<summary>🦙 <b>Ollama (fully local, no API key)</b> — click to expand</summary>
+
+```bash
+pip install "memsearch[ollama]"
+ollama pull nomic-embed-text          # embedding model
+ollama pull llama3.2                  # chat model
+```
+
+```python
+import asyncio
+from datetime import date
+from pathlib import Path
+from ollama import chat
+from memsearch import MemSearch
+
+MEMORY_DIR = "./memory"
+ms = MemSearch(paths=[MEMORY_DIR], embedding_provider="ollama")
+
+def save_memory(content: str):
+    p = Path(MEMORY_DIR) / f"{date.today()}.md"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "a") as f:
+        f.write(f"\n{content}\n")
+
+async def agent_chat(user_input: str) -> str:
+    # 1. Recall
+    memories = await ms.search(user_input, top_k=3)
+    context = "\n".join(f"- {m['content'][:200]}" for m in memories)
+
+    # 2. Think — call Ollama locally
+    resp = chat(
+        model="llama3.2",
+        messages=[
+            {"role": "system", "content": f"You have these memories:\n{context}"},
+            {"role": "user", "content": user_input},
+        ],
+    )
+    answer = resp.message.content
+
+    # 3. Remember
+    save_memory(f"## {user_input}\n{answer}")
+    await ms.index()
+    return answer
+
+async def main():
+    save_memory("## Team\n- Alice: frontend lead\n- Bob: backend lead")
+    await ms.index()
+    print(await agent_chat("Who is our frontend lead?"))
+
+asyncio.run(main())
+```
+
+</details>
 
 ### 🗄️ Milvus Backend Configuration
 
@@ -296,7 +404,7 @@ If you're already using OpenClaw's memory directory layout, just point memsearch
 ```bash
 git clone https://github.com/zc277584121/memsearch.git
 cd memsearch
-uv sync --dev --extra openai
+uv sync --dev
 uv run pytest
 ```
 
