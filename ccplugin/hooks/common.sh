@@ -41,41 +41,45 @@ run_memsearch() {
 
 WATCH_PIDFILE="$MEMSEARCH_DIR/.watch.pid"
 
-# Check if a memsearch watch process is already running for this directory
-is_watch_running() {
+# Kill a process and its entire process group to avoid orphans
+_kill_tree() {
+  local pid="$1"
+  # Kill the process group (negative PID) to catch child processes
+  kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+}
+
+# Stop the watch process: pidfile first, then sweep for orphans
+stop_watch() {
+  # 1. Kill the process recorded in pidfile
   if [ -f "$WATCH_PIDFILE" ]; then
     local pid
     pid=$(cat "$WATCH_PIDFILE" 2>/dev/null)
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-      return 0
+      _kill_tree "$pid"
     fi
-    # Stale PID file, clean up
     rm -f "$WATCH_PIDFILE"
   fi
-  return 1
+
+  # 2. Sweep for orphaned watch processes targeting this MEMORY_DIR
+  local orphans
+  orphans=$(pgrep -f "memsearch watch $MEMORY_DIR" 2>/dev/null || true)
+  if [ -n "$orphans" ]; then
+    echo "$orphans" | while read -r opid; do
+      kill "$opid" 2>/dev/null || true
+    done
+  fi
 }
 
-# Start memsearch watch as a singleton background process
+# Start memsearch watch — always stop-then-start to pick up config changes
 start_watch() {
   if [ -z "$MEMSEARCH_CMD" ]; then
     return 0
   fi
   ensure_memory_dir
-  if is_watch_running; then
-    return 0
-  fi
+
+  # Always restart: ensures latest config (milvus_uri, etc.) is used
+  stop_watch
+
   nohup $MEMSEARCH_CMD watch "$MEMORY_DIR" &>/dev/null &
   echo $! > "$WATCH_PIDFILE"
-}
-
-# Stop the watch process if running
-stop_watch() {
-  if [ -f "$WATCH_PIDFILE" ]; then
-    local pid
-    pid=$(cat "$WATCH_PIDFILE" 2>/dev/null)
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-      kill "$pid" 2>/dev/null || true
-    fi
-    rm -f "$WATCH_PIDFILE"
-  fi
 }
