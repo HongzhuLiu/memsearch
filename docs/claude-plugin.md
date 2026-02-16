@@ -24,10 +24,10 @@ graph LR
     CLI --> HOOKS
     HOOKS -->|"runs inside"| CC[Claude Code]
 
-    style LIB fill:#1a2744,stroke:#6ba3d6,color:#a8b2c1
-    style CLI fill:#1a2744,stroke:#e0976b,color:#a8b2c1
-    style HOOKS fill:#1a2744,stroke:#7bc67e,color:#a8b2c1
-    style CC fill:#2a1a44,stroke:#c97bdb,color:#a8b2c1
+    style LIB fill:#dce8f5,stroke:#4a86c8,color:#1a2744
+    style CLI fill:#fae3d0,stroke:#d08040,color:#1a2744
+    style HOOKS fill:#d5f0d6,stroke:#4a9e4e,color:#1a2744
+    style CC fill:#e8d5f5,stroke:#9b59b6,color:#1a2744
 ```
 
 The **memsearch Python library** provides the core engine (chunking, embedding, vector storage, search). The **memsearch CLI** wraps the library into shell-friendly commands. The **Claude Code Plugin** ties those CLI commands to Claude Code's hook lifecycle — so everything happens automatically without user intervention.
@@ -41,7 +41,7 @@ sequenceDiagram
     participant You
     participant Claude as Claude Code
 
-    rect rgb(60, 30, 30)
+    rect rgb(255, 230, 230)
     note right of You: Without plugin
     You->>Claude: Monday: "Add Redis caching with 5min TTL"
     Claude->>You: ✅ Done — implements caching
@@ -50,7 +50,7 @@ sequenceDiagram
     Claude->>You: ❌ Suggests solutions from scratch<br/>(forgot about the Redis cache from Monday)
     end
 
-    rect rgb(20, 50, 30)
+    rect rgb(220, 245, 220)
     note right of You: With plugin
     You->>Claude: Monday: "Add Redis caching with 5min TTL"
     Claude->>You: ✅ Done — implements caching
@@ -108,12 +108,14 @@ stateDiagram-v2
 
     state Prompting {
         [*] --> UserInput
-        UserInput --> SemanticSearch: memsearch search
+        UserInput --> SemanticSearch: UserPromptSubmit hook
         SemanticSearch --> InjectMemories: top-k results
-        InjectMemories --> ClaudeThinks
-        ClaudeThinks --> Summary: haiku summarize
-        Summary --> WriteMD: write YYYY-MM-DD.md
-        WriteMD --> UserInput: next turn
+        InjectMemories --> ClaudeResponds: Claude processes & replies
+        ClaudeResponds --> fork1
+        state fork1 <<fork>>
+        fork1 --> UserInput: next turn (non-blocking)
+        fork1 --> Summary: Stop hook (async background)
+        Summary --> WriteMD: append to YYYY-MM-DD.md
     }
 
     Prompting --> SessionEnd: user exits
@@ -186,9 +188,9 @@ graph TD
     L1["L1: Auto-injected<br/>(UserPromptSubmit hook)"] --> L2["L2: On-demand expand<br/>(memsearch expand)"]
     L2 --> L3["L3: Transcript drill-down<br/>(memsearch transcript)"]
 
-    style L1 fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
-    style L2 fill:#2a3a5c,stroke:#e0976b,color:#a8b2c1
-    style L3 fill:#2a3a5c,stroke:#d66b6b,color:#a8b2c1
+    style L1 fill:#dce8f5,stroke:#4a86c8,color:#1a2744
+    style L2 fill:#fae3d0,stroke:#d08040,color:#1a2744
+    style L3 fill:#f5d5d5,stroke:#c04040,color:#1a2744
 ```
 
 ### L1: Auto-Injected (Automatic)

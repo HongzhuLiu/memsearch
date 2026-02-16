@@ -2,19 +2,13 @@
 
 memsearch is a plain Python library -- it works with any framework. This page shows ready-made patterns for **[LangChain](https://www.langchain.com/)**, **[LangGraph](https://langchain-ai.github.io/langgraph/)**, **[LlamaIndex](https://www.llamaindex.ai/)**, and **[CrewAI](https://www.crewai.com/)**.
 
-!!! note "Prerequisites"
-    Each integration requires its own packages:
-
-    ```bash
-    $ pip install langchain langchain-openai    # LangChain examples
-    $ pip install langgraph                      # LangGraph agent example
-    $ pip install llama-index-core              # LlamaIndex example
-    $ pip install crewai                         # CrewAI example
-    ```
-
 ---
 
 ## LangChain
+
+```bash
+pip install langchain langchain-openai
+```
 
 ### As a Retriever
 
@@ -104,6 +98,10 @@ print(answer)
 
 ## LangGraph
 
+```bash
+pip install langgraph langchain-openai
+```
+
 ### As a Tool (ReAct Agent)
 
 Wrap memsearch as a [tool](https://python.langchain.com/docs/concepts/tools/) and let a [LangGraph ReAct agent](https://langchain-ai.github.io/langgraph/agents/) decide when to search:
@@ -152,6 +150,10 @@ The agent will autonomously decide when to call `search_memory` based on the use
 ---
 
 ## LlamaIndex
+
+```bash
+pip install llama-index-core
+```
 
 ### As a Retriever
 
@@ -214,6 +216,10 @@ print(response)
 ---
 
 ## CrewAI
+
+```bash
+pip install crewai
+```
 
 ### As a Tool (Multi-Agent Crew)
 
