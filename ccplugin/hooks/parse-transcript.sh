@@ -13,6 +13,12 @@
 
 set -euo pipefail
 
+# parse-transcript requires jq for JSON processing; gracefully degrade if missing
+if ! command -v jq &>/dev/null; then
+  echo "(transcript parsing skipped — jq not installed)"
+  exit 0
+fi
+
 TRANSCRIPT_PATH="${1:-}"
 MAX_LINES="${MEMSEARCH_MAX_LINES:-200}"
 MAX_CHARS="${MEMSEARCH_MAX_CHARS:-500}"
@@ -63,7 +69,7 @@ tail -n "$MAX_LINES" "$TRANSCRIPT_PATH" | while IFS= read -r line; do
   ts_short=""
   if [ -n "$ts" ]; then
     # Extract HH:MM:SS from ISO timestamp
-    ts_short=$(printf '%s' "$ts" | grep -oP 'T\K[0-9]{2}:[0-9]{2}:[0-9]{2}' 2>/dev/null || echo "")
+    ts_short=$(printf '%s' "$ts" | sed -n 's/.*T\([0-9][0-9]:[0-9][0-9]:[0-9][0-9]\).*/\1/p' 2>/dev/null || echo "")
   fi
 
   if [ "$entry_type" = "user" ]; then

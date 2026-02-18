@@ -45,8 +45,8 @@ fi
 # Check PyPI for newer version (2s timeout, non-blocking on failure)
 UPDATE_HINT=""
 if [ -n "$VERSION" ]; then
-  LATEST=$(curl -s --max-time 2 https://pypi.org/pypi/memsearch/json 2>/dev/null \
-    | jq -r '.info.version // empty' 2>/dev/null || true)
+  _PYPI_JSON=$(curl -s --max-time 2 https://pypi.org/pypi/memsearch/json 2>/dev/null || true)
+  LATEST=$(_json_val "$_PYPI_JSON" "info.version" "")
   if [ -n "$LATEST" ] && [ "$LATEST" != "$VERSION" ]; then
     UPDATE_HINT=" | UPDATE: v${LATEST} available"
   fi
@@ -68,7 +68,7 @@ echo -e "\n## Session $NOW\n" >> "$MEMORY_FILE"
 
 # If API key is missing, show status and exit early (watch/search would fail)
 if [ "$KEY_MISSING" = true ]; then
-  json_status=$(printf '%s' "$status" | jq -Rs .)
+  json_status=$(_json_encode_str "$status")
   echo "{\"systemMessage\": $json_status}"
   exit 0
 fi
@@ -78,7 +78,7 @@ fi
 start_watch
 
 # Always include status in systemMessage
-json_status=$(printf '%s' "$status" | jq -Rs .)
+json_status=$(_json_encode_str "$status")
 
 # If memory dir has no .md files (other than the one we just created), nothing to inject
 if [ ! -d "$MEMORY_DIR" ] || ! ls "$MEMORY_DIR"/*.md &>/dev/null; then
@@ -108,7 +108,7 @@ fi
 # to decide when to invoke the skill for deeper recall.
 
 if [ -n "$context" ]; then
-  json_context=$(printf '%s' "$context" | jq -Rs .)
+  json_context=$(_json_encode_str "$context")
   echo "{\"systemMessage\": $json_status, \"hookSpecificOutput\": {\"hookEventName\": \"SessionStart\", \"additionalContext\": $json_context}}"
 else
   echo "{\"systemMessage\": $json_status}"

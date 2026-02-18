@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 # Prevent infinite loop: if this Stop was triggered by a previous Stop hook, bail out
-STOP_HOOK_ACTIVE=$(echo "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null)
+STOP_HOOK_ACTIVE=$(_json_val "$INPUT" "stop_hook_active" "false")
 if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
   echo '{}'
   exit 0
@@ -29,7 +29,7 @@ if [ -n "$_REQ_KEY" ] && [ -z "${!_REQ_KEY:-}" ]; then
 fi
 
 # Extract transcript path from hook input
-TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
+TRANSCRIPT_PATH=$(_json_val "$INPUT" "transcript_path" "")
 
 if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; then
   echo '{}'

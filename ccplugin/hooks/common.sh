@@ -30,6 +30,58 @@ _detect_memsearch
 # Short command prefix for injected instructions (falls back to "memsearch" even if unavailable)
 MEMSEARCH_CMD_PREFIX="${MEMSEARCH_CMD:-memsearch}"
 
+# --- JSON helpers (jq preferred, python3 fallback) ---
+
+# _json_val <json_string> <dotted_key> [default]
+# Extract a value from JSON. Key supports dotted notation (e.g. "info.version").
+# Returns the default (or empty string) if the key is missing or extraction fails.
+_json_val() {
+  local json="$1" key="$2" default="${3:-}"
+  local result=""
+
+  if command -v jq &>/dev/null; then
+    # Build jq filter from dotted key: "info.version" → ".info.version"
+    result=$(printf '%s' "$json" | jq -r ".${key} // empty" 2>/dev/null) || true
+  else
+    result=$(python3 -c "
+import json, sys
+try:
+    obj = json.loads(sys.argv[1])
+    val = obj
+    for k in sys.argv[2].split('.'):
+        val = val[k]
+    if val is None:
+        print('')
+    elif isinstance(val, bool):
+        print(str(val).lower())
+    else:
+        print(val)
+except Exception:
+    print('')
+" "$json" "$key" 2>/dev/null) || true
+  fi
+
+  if [ -z "$result" ]; then
+    printf '%s' "$default"
+  else
+    printf '%s' "$result"
+  fi
+  return 0
+}
+
+# _json_encode_str <string>
+# Encode a string as a JSON string (with surrounding quotes).
+_json_encode_str() {
+  local str="$1"
+  if command -v jq &>/dev/null; then
+    printf '%s' "$str" | jq -Rs . 2>/dev/null && return 0
+  fi
+  printf '%s' "$str" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" 2>/dev/null && return 0
+  # Last resort: simple quoting (no special char escaping)
+  printf '"%s"' "$str"
+  return 0
+}
+
 # Helper: ensure memory directory exists
 ensure_memory_dir() {
   mkdir -p "$MEMORY_DIR"
