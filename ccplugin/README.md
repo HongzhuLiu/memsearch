@@ -86,7 +86,7 @@ cat .memsearch/memory/$(date +%Y-%m-%d).md
 # 4. Start a new session — Claude automatically remembers!
 ```
 
-> **Note:** You don't need to install memsearch manually — the plugin auto-installs it via [`uvx`](https://docs.astral.sh/uv/) on first run.
+> **Note:** If memsearch is not already installed, the plugin will attempt to install it automatically on first run.
 
 ---
 
