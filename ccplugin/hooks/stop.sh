@@ -80,7 +80,7 @@ print(uuid)
 # --system-prompt: separate role instructions from data (transcript via stdin)
 SUMMARY=""
 if command -v claude &>/dev/null; then
-  SUMMARY=$(printf '%s' "$PARSED" | claude -p \
+  SUMMARY=$(printf '%s' "$PARSED" | MEMSEARCH_NO_WATCH=1 claude -p \
     --model haiku \
     --no-session-persistence \
     --no-chrome \

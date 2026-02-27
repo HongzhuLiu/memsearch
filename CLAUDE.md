@@ -91,8 +91,8 @@ ccplugin/
 When modifying hooks/skills, keep in mind:
 - All hooks output JSON to stdout (`additionalContext` for context injection, `systemMessage` for visible hints, or empty `{}`)
 - `common.sh` is sourced by every hook — changes there affect all hooks. It derives a per-project `COLLECTION_NAME` via `derive-collection.sh` and passes `--collection` automatically through `run_memsearch()` and `start_watch()`
-- The watch process uses a PID file (`.memsearch/.watch.pid`) for singleton behavior
-- `stop.sh` has a recursion guard (`stop_hook_active`) since it calls `claude -p` internally
+- The watch process uses a PID file (`.memsearch/.watch.pid`) for singleton behavior. Milvus Lite falls back to one-time `index()` at session start
+- `stop.sh` has a recursion guard (`stop_hook_active`) since it calls `claude -p` internally, and sets `MEMSEARCH_NO_WATCH=1` to prevent the child process from interfering with the main session's watch
 - The `memory-recall` skill uses `context: fork` — the subagent has its own context window and does not see main conversation history
 
 ## Key Design Decisions

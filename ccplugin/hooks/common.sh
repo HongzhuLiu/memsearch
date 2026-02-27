@@ -112,6 +112,10 @@ _kill_tree() {
 
 # Stop the watch process: pidfile first, then sweep for orphans
 stop_watch() {
+  # Skip watch management in child claude -p processes (e.g. stop.sh summarization)
+  if [ "${MEMSEARCH_NO_WATCH:-}" = "1" ]; then
+    return 0
+  fi
   # 1. Kill the process recorded in pidfile
   if [ -f "$WATCH_PIDFILE" ]; then
     local pid
@@ -134,6 +138,10 @@ stop_watch() {
 
 # Start memsearch watch — always stop-then-start to pick up config changes
 start_watch() {
+  # Skip watch management in child claude -p processes (e.g. stop.sh summarization)
+  if [ "${MEMSEARCH_NO_WATCH:-}" = "1" ]; then
+    return 0
+  fi
   if [ -z "$MEMSEARCH_CMD" ]; then
     return 0
   fi
@@ -142,10 +150,23 @@ start_watch() {
   # Always restart: ensures latest config (milvus_uri, etc.) is used
   stop_watch
 
+  # Detect Milvus backend from URI
+  local _uri="${MILVUS_URI:-$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")}"
+
+  # Lite (local .db): skip watch entirely — file lock prevents concurrent access.
+  # Session-start does a one-time index() instead.
+  if [[ "$_uri" != http* ]] && [[ "$_uri" != tcp* ]]; then
+    return 0
+  fi
+
+  # Server (http/tcp): setsid — watch runs persistently for real-time indexing.
+  local launch_prefix="nohup"
+  command -v setsid &>/dev/null && launch_prefix="setsid"
+
   if [ -n "$COLLECTION_NAME" ]; then
-    nohup $MEMSEARCH_CMD watch "$MEMORY_DIR" --collection "$COLLECTION_NAME" &>/dev/null &
+    $launch_prefix $MEMSEARCH_CMD watch "$MEMORY_DIR" --collection "$COLLECTION_NAME" </dev/null &>/dev/null &
   else
-    nohup $MEMSEARCH_CMD watch "$MEMORY_DIR" &>/dev/null &
+    $launch_prefix $MEMSEARCH_CMD watch "$MEMORY_DIR" </dev/null &>/dev/null &
   fi
   echo $! > "$WATCH_PIDFILE"
 }

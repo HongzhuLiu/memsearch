@@ -77,9 +77,14 @@ if [ "$KEY_MISSING" = true ]; then
   exit 0
 fi
 
-# Start memsearch watch as a singleton background process.
-# This is the ONLY place indexing is managed — all other hooks just write .md files.
+# Start memsearch watch (Server mode) or do one-time index (Lite mode).
+# start_watch() skips watch for Lite — file lock prevents concurrent access.
 start_watch
+
+# Lite mode: one-time index since watch is not running
+if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]]; then
+  run_memsearch index "$MEMORY_DIR" &>/dev/null &
+fi
 
 # Always include status in systemMessage
 json_status=$(_json_encode_str "$status")
