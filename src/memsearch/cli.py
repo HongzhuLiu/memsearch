@@ -158,10 +158,12 @@ def search(
                 return
             for i, r in enumerate(results, 1):
                 score = r.get("score", 0)
+                semantic_score = r.get("semantic_score", 0)
                 source = r.get("source", "?")
                 heading = r.get("heading", "")
                 content = r.get("content", "")
-                click.echo(f"\n--- Result {i} (score: {score:.4f}) ---")
+                # 显示 RRF 分数和语义相似度分数
+                click.echo(f"\n--- Result {i} (semantic: {semantic_score:.4f}, rrf: {score:.4f}) ---")
                 click.echo(f"Source: {source}")
                 if heading:
                     click.echo(f"Heading: {heading}")

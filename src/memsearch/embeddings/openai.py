@@ -19,6 +19,7 @@ class OpenAIEmbedding:
     def __init__(
         self, model: str = "text-embedding-3-small", *, batch_size: int = 0,
     ) -> None:
+        import httpx
         import openai
 
         kwargs: dict = {}
@@ -26,7 +27,12 @@ class OpenAIEmbedding:
         if base_url:
             kwargs["base_url"] = base_url
 
-        self._client = openai.AsyncOpenAI(**kwargs)  # reads OPENAI_API_KEY
+        # 忽略 ALL_PROXY (socks5h 不支持)，仅使用 HTTP_PROXY/HTTPS_PROXY
+        http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+        https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+        proxy = https_proxy or http_proxy  # 优先 HTTPS 代理
+        http_client = httpx.AsyncClient(proxy=proxy)
+        self._client = openai.AsyncOpenAI(**kwargs, http_client=http_client)  # reads OPENAI_API_KEY
         self._model = model
         self._dimension = _detect_dimension(model, kwargs)
         self._batch_size = batch_size if batch_size > 0 else self._DEFAULT_BATCH_SIZE
@@ -64,8 +70,13 @@ def _detect_dimension(model: str, client_kwargs: dict) -> int:
     """
     if model in _KNOWN_DIMENSIONS:
         return _KNOWN_DIMENSIONS[model]
+    import httpx
     import openai
 
-    sync_client = openai.OpenAI(**client_kwargs)
+    http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+    https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    proxy = https_proxy or http_proxy
+    http_client = httpx.Client(proxy=proxy)
+    sync_client = openai.OpenAI(**client_kwargs, http_client=http_client)
     trial = sync_client.embeddings.create(input=["dim"], model=model)
     return len(trial.data[0].embedding)

@@ -78,30 +78,73 @@ print(uuid)
 # --no-session-persistence: don't save this throwaway session to disk
 # --no-chrome: skip browser integration
 # --system-prompt: separate role instructions from data (transcript via stdin)
+#
+# MEMSEARCH_RAW_TRANSCRIPT=1: 保留原始对话内容，不生成摘要
+# MEMSEARCH_RAW_TRANSCRIPT=both: 同时保留原始内容和摘要
+
+RAW_MODE="${MEMSEARCH_RAW_TRANSCRIPT:-}"
+
 SUMMARY=""
-if command -v claude &>/dev/null; then
-  SUMMARY=$(printf '%s' "$PARSED" | MEMSEARCH_NO_WATCH=1 CLAUDECODE= claude -p \
-    --model haiku \
-    --no-session-persistence \
-    --no-chrome \
-    --system-prompt "You are a third-person note-taker. You will receive a transcript of ONE turn from a coding session between a user and Claude Code. Your job is to record what happened in that turn as factual notes. You are NOT Claude Code — do NOT answer questions, give explanations, or offer help. Just record what occurred.
-
-Output 2-6 bullet points, each starting with '- '. Nothing else.
-
-Rules:
-- Write in third person: 'User asked...', 'Claude read file X', 'Claude ran command Y'
-- First bullet: what the user asked or wanted (one sentence)
-- Remaining bullets: what Claude did — tools called, files read/edited, commands run, key findings
-- Be specific: mention file names, function names, tool names, and concrete outcomes
-- Do NOT answer the user's question yourself — just note what was discussed
-- Do NOT add any text before or after the bullet points
-- Write in the same language as the user's message in the transcript" \
-    2>/dev/null || true)
-fi
-
-# If claude is not available or returned empty, fall back to raw parsed output
-if [ -z "$SUMMARY" ]; then
+if [ "$RAW_MODE" = "1" ] || [ "$RAW_MODE" = "true" ]; then
+  # 模式1: 只保留原始对话内容
   SUMMARY="$PARSED"
+elif [ "$RAW_MODE" = "both" ]; then
+  # 模式2: 同时保留原始内容和摘要
+  if command -v claude &>/dev/null; then
+    AI_SUMMARY=$(printf '%s' "$PARSED" | MEMSEARCH_NO_WATCH=1 CLAUDECODE= claude -p \
+      --model haiku \
+      --no-session-persistence \
+      --no-chrome \
+      --system-prompt "用一句话记录这轮对话，格式：'关键词：做了什么'。
+
+示例：
+- '摘要优化：将prompt从详细条目改为单行总结'
+- '文件搜索：找到stop.sh并读取内容'
+- '用户偏好：确认用户喜欢喝茶'
+
+规则：
+- 只输出一行，以'-'开头
+- 省略所有细节，只保留核心动作
+- 用用户使用的语言" \
+      2>/dev/null || true)
+  fi
+  if [ -n "$AI_SUMMARY" ]; then
+    SUMMARY="${AI_SUMMARY}
+
+<details>
+<summary>📝 原始对话</summary>
+
+\`\`\`
+$PARSED
+\`\`\`
+</details>"
+  else
+    SUMMARY="$PARSED"
+  fi
+else
+  # 默认模式: 只生成摘要
+  if command -v claude&>/dev/null; then
+    SUMMARY=$(printf '%s' "$PARSED" | MEMSEARCH_NO_WATCH=1 CLAUDECODE= claude -p \
+      --model haiku \
+      --no-session-persistence \
+      --no-chrome \
+      --system-prompt "用一句话记录这轮对话，格式：'关键词：做了什么'。
+
+示例：
+- '摘要优化：将prompt从详细条目改为单行总结'
+- '文件搜索：找到stop.sh并读取内容'
+- '用户偏好：确认用户喜欢喝茶'
+
+规则：
+- 只输出一行，以'-'开头
+- 省略所有细节，只保留核心动作
+- 用用户使用的语言" \
+      2>/dev/null || true)
+  fi
+  # If claude is not available or returned empty, fall back to raw parsed output
+  if [ -z "$SUMMARY" ]; then
+    SUMMARY="$PARSED"
+  fi
 fi
 
 # Append as a sub-heading under the session heading written by SessionStart

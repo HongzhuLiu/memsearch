@@ -136,7 +136,12 @@ class MilvusStore:
         top_k: int = 10,
         filter_expr: str = "",
     ) -> list[dict[str, Any]]:
-        """Hybrid search: dense vector + BM25 full-text with RRF reranking."""
+        """Hybrid search: dense vector + BM25 full-text with RRF reranking.
+
+        Returns results with two score fields:
+        - score: RRF fusion score (hybrid ranking)
+        - semantic_score: raw cosine similarity from dense vector search
+        """
         from pymilvus import AnnSearchRequest, RRFRanker
 
         req_kwargs: dict[str, Any] = {}
@@ -169,8 +174,31 @@ class MilvusStore:
 
         if not results or not results[0]:
             return []
+
+        # 同时获取纯语义搜索结果以获取原始余弦相似度分数
+        semantic_results = self._client.search(
+            collection_name=self._collection,
+            data=[query_embedding],
+            anns_field="embedding",
+            search_params={"metric_type": "COSINE"},
+            limit=top_k,
+            output_fields=["chunk_hash"],
+        )
+
+        # 建立 chunk_hash -> semantic_score 映射
+        semantic_scores = {}
+        if semantic_results and semantic_results[0]:
+            for hit in semantic_results[0]:
+                chunk_hash = hit.get("entity", {}).get("chunk_hash")
+                if chunk_hash:
+                    semantic_scores[chunk_hash] = hit.get("distance", 0)
+
         return [
-            {**hit["entity"], "score": hit["distance"]}
+            {
+                **hit["entity"],
+                "score": hit["distance"],  # RRF fusion score
+                "semantic_score": semantic_scores.get(hit["entity"].get("chunk_hash"), 0),  #原始余弦相似度
+            }
             for hit in results[0]
         ]
 

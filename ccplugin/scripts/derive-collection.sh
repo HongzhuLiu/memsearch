@@ -12,17 +12,29 @@ set -euo pipefail
 
 PROJECT_DIR="${1:-$(pwd)}"
 
-# Resolve to absolute path (realpath preferred, cd fallback, raw last resort)
-if command -v realpath &>/dev/null; then
-  PROJECT_DIR="$(realpath -m "$PROJECT_DIR")"
-elif [ -d "$PROJECT_DIR" ]; then
-  PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
+# Resolve to absolute path
+# Note: macOS realpath doesn't support -m option, so we handle it differently
+if [ -d "$PROJECT_DIR" ]; then
+  # Directory exists: use realpath or cd fallback
+  if command -v realpath &>/dev/null; then
+    PROJECT_DIR="$(realpath "$PROJECT_DIR")"
+  else
+    PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
+  fi
 else
-  # If directory doesn't exist and no realpath, ensure it starts with /
+  # Directory doesn't exist: resolve manually without following symlinks
   case "$PROJECT_DIR" in
     /*) ;; # already absolute
     *)  PROJECT_DIR="$(pwd)/$PROJECT_DIR" ;;
   esac
+  # Normalize the path (remove . and .. components)
+  if command -v realpath &>/dev/null && realpath -m / 2>/dev/null; then
+    # Linux realpath supports -m
+    PROJECT_DIR="$(realpath -m "$PROJECT_DIR")"
+  else
+    # Fallback: use python to normalize path without requiring it to exist
+    PROJECT_DIR="$(python3 -c "import os.path; print(os.path.normpath('$PROJECT_DIR'))")"
+  fi
 fi
 
 # Extract basename and sanitize:
